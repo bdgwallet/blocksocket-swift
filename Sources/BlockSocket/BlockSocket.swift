@@ -34,7 +34,7 @@ public class BlockSocket: NSObject, ObservableObject {
             openWebSocket()
         }
         
-        self.webSocket?.send(URLSessionWebSocketTask.Message.data("{ action: 'want', data: ['blocks'] }".data(using: .utf8)!))) { error in
+        self.webSocket?.send(URLSessionWebSocketTask.Message.data("{ action: 'want', data: ['blocks'] }".data(using: .utf8)!)) { error in
             if let error = error {
                 print("Failed with Error \(error.localizedDescription)")
             } else {
