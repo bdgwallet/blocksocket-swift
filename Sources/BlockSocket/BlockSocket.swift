@@ -48,6 +48,7 @@ public class BlockSocket: NSObject, ObservableObject {
                 }
             }
         } catch let error{
+            print("Websocket.send error")
             print(error)
         }
     }
@@ -80,6 +81,7 @@ public class BlockSocket: NSObject, ObservableObject {
                 self.webSocket?.resume()
                 self.opened = true
             } else {
+                print("Websocket connection was not opened")
                 self.webSocket = nil
             }
         }
