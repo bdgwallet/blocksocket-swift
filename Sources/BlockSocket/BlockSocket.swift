@@ -3,7 +3,7 @@
 
 import Foundation
 
-public class BlockSocket: NSObject, ObservableObject {
+public class BlockSocket: NSObject, ObservableObject, URLSessionDelegate {
     // Public variables
     //@Published public var latestBlock: Block?
     
@@ -14,18 +14,14 @@ public class BlockSocket: NSObject, ObservableObject {
     private var pingTimer: Timer?
     
     // Initialize a BlockSocket instance
-    public init(source: BlockSocketSource) {
-        switch source.type {
+    public init(source: BlockSocketSourceType) {
+        switch source {
         case .blockchain_com:
             self.urlString = BLOCKCHAIN_COM_URL
         case .mempool_space:
             self.urlString = MEMPOOL_SPACE_URL
-        case .custom:
-            if source.customUrl != nil {
-                self.urlString = source.customUrl!
-            } else {
-                print("No custom URL provided")
-            }
+        case let .custom(url):
+            self.urlString = url
         }
     }
     
@@ -33,24 +29,24 @@ public class BlockSocket: NSObject, ObservableObject {
         if !opened {
             openWebSocket()
         }
-        
-        do {
-            let encoder = JSONEncoder()
-            let data = try encoder.encode("{ action: 'want', data: ['blocks'] }")
-            let message = URLSessionWebSocketTask.Message.data(data)
-            
-            self.webSocket?.send(message) { error in
-                if let error = error {
-                    print("Failed with Error \(error.localizedDescription)")
-                } else {
-                    self.receiveMessage()
-                    self.keepAlive()
-                }
-            }
-        } catch let error{
-            print("Websocket.send error")
-            print(error)
-        }
+        self.receiveMessage()
+//        do {
+//            let encoder = JSONEncoder()
+//            let data = try encoder.encode("{ action: 'want', data: ['blocks'] }")
+//            let message = URLSessionWebSocketTask.Message.data(data)
+//
+//            self.webSocket?.send(message) { error in
+//                if let error = error {
+//                    print("Failed with Error \(error.localizedDescription)")
+//                } else {
+//                    self.receiveMessage()
+//                    self.keepAlive()
+//                }
+//            }
+//        } catch let error{
+//            print("Websocket.send error")
+//            print(error)
+//        }
     }
     
     private func receiveMessage() {
@@ -134,7 +130,7 @@ public struct BlockSocketSource {
 public enum BlockSocketSourceType {
     case blockchain_com
     case mempool_space
-    case custom
+    case custom(url: String)
 }
 
 // Public API URLs
