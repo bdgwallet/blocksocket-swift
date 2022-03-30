@@ -142,8 +142,8 @@ public enum BlockSocketSource {
 }
 
 public struct SocketBlock: Codable {
-    let height: Int
-    let hash: String
+    public let height: Int
+    public let hash: String
 }
 
 // Public API URLs
