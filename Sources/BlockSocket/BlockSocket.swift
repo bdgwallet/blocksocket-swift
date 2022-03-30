@@ -9,7 +9,8 @@ import Starscream
 
 public class BlockSocket: ObservableObject, WebSocketDelegate {
     // Public variables
-    @Published public var latestBlock: SocketBlock?
+    @Published public var latestBlockHeight: UInt32?
+    @Published public var latestBlockHash: String?
     @Published public var socketState = SocketState.disconnected {
         didSet {
             switch socketState {
@@ -125,9 +126,8 @@ public class BlockSocket: ObservableObject, WebSocketDelegate {
     
     // Convert blockinfo from Blockchain.com to SocketBlock and set as latest
     private func getBlockInfoBlockchain_com(blockInfo: [String:Any]) {
-        let blockHeight = blockInfo["height"] as! Int
-        let blockHash = blockInfo["hash"] as! String
-        self.latestBlock = SocketBlock(height: blockHeight, hash: blockHash)
+        self.latestBlockHeight = blockInfo["height"] as? UInt32
+        self.latestBlockHash = blockInfo["hash"] as? String
     }
     
     // Handle websocket errors
@@ -151,11 +151,6 @@ public enum BlockSocketSource {
 public enum SocketState {
     case connected
     case disconnected
-}
-
-public struct SocketBlock: Codable {
-    public let height: Int
-    public let hash: String
 }
 
 // Public API URLs
