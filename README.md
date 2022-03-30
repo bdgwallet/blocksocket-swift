@@ -62,7 +62,7 @@ struct WalletView: View {
             Text("Hello, wallet!")
             switch blockSocket.socketState {
             case .connected:
-                Text("Latest block: \(blockSocket.latestBlock?.height ?? 0)")
+                Text("Latest block: \(blockSocket.latestBlockHeight ?? 0)")
             case .disconnected:
                 Text("BlockSocket not connected")
             }
