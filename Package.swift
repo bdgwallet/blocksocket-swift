@@ -14,11 +14,15 @@ let package = Package(
             name: "BlockSocket",
             targets: ["BlockSocket"]),
     ],
+    dependencies: [
+        .package(name: "Starscream", url: "https://github.com/daltoniam/Starscream", from: "4.0.4"),
+    ],
     targets: [
         // Targets are the basic building blocks of a package. A target can define a module or a test suite.
         // Targets can depend on other targets in this package, and on products in packages this package depends on.
         .target(
             name: "BlockSocket",
+            dependencies: ["Starscream"],
             path: "Sources"),
     ]
 )

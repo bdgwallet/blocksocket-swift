@@ -1,142 +1,158 @@
+//
+//  BlockSocket.swift
+//
 //  Created by Daniel Nordh on 3/29/22.
 //
 
 import Foundation
+import Starscream
 
-public class BlockSocket: NSObject, ObservableObject, URLSessionDelegate {
+public class BlockSocket: ObservableObject, WebSocketDelegate {
     // Public variables
-    //@Published public var latestBlock: Block?
+    @Published public var latestBlock: SocketBlock?
     
     // Private variables
-    private var webSocket: URLSessionWebSocketTask?
-    private var urlString: String?
-    private var opened = false
+    private var socket: WebSocket
+    private var source: BlockSocketSource
+    private var isConnected = false
     private var pingTimer: Timer?
     
-    // Initialize a BlockSocket instance
-    public init(source: BlockSocketSourceType) {
-        switch source {
-        case .blockchain_com:
-            self.urlString = BLOCKCHAIN_COM_URL
-        case .mempool_space:
-            self.urlString = MEMPOOL_SPACE_URL
-        case let .custom(url):
-            self.urlString = url
-        }
+    // Initialize, connect to websocket source, get latest block and subscribe to new blocks
+    public init(source: BlockSocketSource) {
+        self.source = source
+        let urlString = source == BlockSocketSource.blockchain_com ? BLOCKCHAIN_COM_URL : MEMPOOL_SPACE_URL
+        var request = URLRequest(url: URL(string: urlString)!)
+        request.timeoutInterval = 5
+        self.socket = WebSocket(request: request)
+        self.socket.delegate = self
+        self.socket.connect()
     }
     
-    public func connect() {
-        if !opened {
-            openWebSocket()
-        }
-        self.receiveMessage()
-//        do {
-//            let encoder = JSONEncoder()
-//            let data = try encoder.encode("{ action: 'want', data: ['blocks'] }")
-//            let message = URLSessionWebSocketTask.Message.data(data)
-//
-//            self.webSocket?.send(message) { error in
-//                if let error = error {
-//                    print("Failed with Error \(error.localizedDescription)")
-//                } else {
-//                    self.receiveMessage()
-//                    self.keepAlive()
-//                }
-//            }
-//        } catch let error{
-//            print("Websocket.send error")
-//            print(error)
-//        }
-    }
-    
-    private func receiveMessage() {
-        self.webSocket?.receive(completionHandler: { result in
-            switch result {
-            case .failure(let error):
-                print(error.localizedDescription)
-            case .success(let message):
-                switch message {
-                case .string(let messageString):
-                    print(messageString)
-                case .data(let data):
-                    print(data.description)
-                default:
-                    print("Unknown type received from WebSocket")
-                }
-            }
-            self.receiveMessage()
-        })
-    }
-    
-    private func openWebSocket() {
-        if self.urlString != nil {
-            if let url = URL(string: self.urlString!) {
-                let request = URLRequest(url: url)
-                let session = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
-                self.webSocket = session.webSocketTask(with: request)
-                self.webSocket?.resume()
-                self.opened = true
-            } else {
-                print("Websocket connection was not opened")
-                self.webSocket = nil
-            }
-        }
-    }
-    
+    // Unsubscribe to new blocks and disconnect websocket source
     public func disconnect() {
-        self.pingTimer?.invalidate()
-        self.webSocket?.cancel(with: .goingAway, reason: nil)
-        self.webSocket = nil
-        opened = false
-    }
-    
-    private func keepAlive() {
-        self.pingTimer = Timer.scheduledTimer(withTimeInterval: KEEPALIVE_INTERVAL, repeats: true) { timer in
-            self.webSocket?.sendPing(pongReceiveHandler: { error in
-                if let error = error {
-                    print("Failed with Error \(error.localizedDescription)")
-                } else {
-                    self.receiveMessage()
-                }
-            })
+        if isConnected {
+            self.unsubscribeToBlocks()
+            self.socket.disconnect()
         }
-        self.pingTimer?.fire()
-    }
-}
-
-// WebSocket delegate
-extension BlockSocket: URLSessionWebSocketDelegate {
-    public func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) {
-        opened = true
     }
     
-    public func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didCloseWith closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
-        self.webSocket = nil
-        self.opened = false
+    // Handle websocket events
+    public func didReceive(event: WebSocketEvent, client: WebSocket) {
+        switch event {
+        case .connected:
+            isConnected = true
+            print("BlockSocket connected")
+            self.getLatestBlock()
+            self.subscribeToBlocks()
+        case .disconnected(let reason, let code):
+            isConnected = false
+            print("BlockSocket disconnected: \(reason) with code: \(code)")
+        case .text(let string):
+            switch self.source {
+            case .blockchain_com:
+                handleBlockchain_com(response: string)
+            }
+        case .reconnectSuggested(_):
+            self.socket.connect()
+        case .cancelled:
+            isConnected = false
+        case .error(let error):
+            isConnected = false
+            handleError(error)
+        default:
+            break
+        }
+    }
+    
+    // Send message to get most recently mined block
+    private func getLatestBlock() {
+        switch self.source {
+        case .blockchain_com:
+            sendMessage(message: BLOCKCHAIN_COM_MSG_BLOCKLATEST)
+        }
+    }
+    
+    // Send message to subscribe to future blocks
+    private func subscribeToBlocks() {
+        switch self.source {
+        case .blockchain_com:
+            sendMessage(message: BLOCKCHAIN_COM_MSG_BLOCKSUB)
+        }
+    }
+    
+    // Send message to unsubscribe from future blocks
+    private func unsubscribeToBlocks() {
+        switch self.source {
+        case .blockchain_com:
+            sendMessage(message: BLOCKCHAIN_COM_MSG_BLOCKUNSUB)
+        }
+    }
+    
+    // Send a message to websocket
+    private func sendMessage(message: [String:Any]) {
+        do {
+            let data = try JSONSerialization.data(withJSONObject: message)
+            if let dataString = String(data: data, encoding: .utf8){
+                self.socket.write(string: dataString)
+            }
+        } catch {
+            print("Failed to send message: ", error)
+        }
+    }
+    
+    // Handle response from Blockchain.com websocket API that includes a block
+    private func handleBlockchain_com(response: String) {
+        do {
+            let jsonArray = try JSONSerialization.jsonObject(with: Data(response.utf8), options: []) as? [String: Any]
+            let op: String = jsonArray!["op"] != nil ? jsonArray!["op"] as! String : ""
+            if op == "block" {
+                let blockInfo = jsonArray!["x"] as! [String:Any]
+                self.getBlockInfoBlockchain_com(blockInfo: blockInfo)
+            } else {
+                print("Received non block op: \(op)")
+            }
+        } catch let error {
+            print(error)
+        }
+    }
+    
+    // Convert blockinfo from Blockchain.com to SocketBlock and set as latest
+    private func getBlockInfoBlockchain_com(blockInfo: [String:Any]) {
+        let blockHeight = blockInfo["height"] as! Int
+        let blockHash = blockInfo["hash"] as! String
+        self.latestBlock = SocketBlock(height: blockHeight, hash: blockHash)
+    }
+    
+    // Handle websocket errors
+    private func handleError(_ error: Error?) {
+        if let e = error as? WSError {
+            print("websocket encountered an error: \(e.message)")
+        } else if let e = error {
+            print("websocket encountered an error: \(e.localizedDescription)")
+        } else {
+            print("websocket encountered an error")
+        }
     }
 }
 
 // Helpers
-public struct BlockSocketSource {
-    public let type: BlockSocketSourceType
-    public let customUrl: String?
-    
-    public init(type: BlockSocketSourceType, customUrl: String?) {
-        self.type = type
-        self.customUrl = customUrl
-    }
+public enum BlockSocketSource {
+    case blockchain_com
+    //case mempool_space // Ignore for now, does not provide latest block, only next one
 }
 
-public enum BlockSocketSourceType {
-    case blockchain_com
-    case mempool_space
-    case custom(url: String)
+public struct SocketBlock: Codable {
+    let height: Int
+    let hash: String
 }
 
 // Public API URLs
-// TODO: Check if this is available for testnet
+// TODO: Check if any are available for testnet
 let BLOCKCHAIN_COM_URL = "wss://ws.blockchain.info/inv"
 let MEMPOOL_SPACE_URL = "wss://mempool.space/api/v1/ws"
 
-// Defaults
-let KEEPALIVE_INTERVAL = 60.0
+let BLOCKCHAIN_COM_MSG_BLOCKLATEST = ["op" : "ping_block"]
+let BLOCKCHAIN_COM_MSG_BLOCKSUB = ["op" : "blocks_sub"]
+let BLOCKCHAIN_COM_MSG_BLOCKUNSUB = ["op" : "blocks_unsub"]
+
+let MEMPOOL_SPACE_MSG_BLOCKSUB: [String:Any] = ["action" : "want", "data" : ["blocks"]]
