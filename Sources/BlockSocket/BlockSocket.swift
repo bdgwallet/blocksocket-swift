@@ -10,11 +10,22 @@ import Starscream
 public class BlockSocket: ObservableObject, WebSocketDelegate {
     // Public variables
     @Published public var latestBlock: SocketBlock?
+    @Published public var socketState = SocketState.disconnected {
+        didSet {
+            switch socketState {
+            case .connected:
+                print("BlockSocket connected")
+                self.getLatestBlock()
+                self.subscribeToBlocks()
+            case .disconnected:
+                print("BlockSocket disconnected")
+            }
+        }
+    }
     
     // Private variables
     private var socket: WebSocket
     private var source: BlockSocketSource
-    private var isConnected = false
     private var pingTimer: Timer?
     
     // Initialize, connect to websocket source, get latest block and subscribe to new blocks
@@ -30,7 +41,7 @@ public class BlockSocket: ObservableObject, WebSocketDelegate {
     
     // Unsubscribe to new blocks and disconnect websocket source
     public func disconnect() {
-        if isConnected {
+        if self.socketState == .connected {
             self.unsubscribeToBlocks()
             self.socket.disconnect()
         }
@@ -40,13 +51,9 @@ public class BlockSocket: ObservableObject, WebSocketDelegate {
     public func didReceive(event: WebSocketEvent, client: WebSocket) {
         switch event {
         case .connected:
-            isConnected = true
-            print("BlockSocket connected")
-            self.getLatestBlock()
-            self.subscribeToBlocks()
-        case .disconnected(let reason, let code):
-            isConnected = false
-            print("BlockSocket disconnected: \(reason) with code: \(code)")
+            self.socketState = .connected
+        case .disconnected:
+            self.socketState = .disconnected
         case .text(let string):
             switch self.source {
             case .blockchain_com:
@@ -55,9 +62,9 @@ public class BlockSocket: ObservableObject, WebSocketDelegate {
         case .reconnectSuggested(_):
             self.socket.connect()
         case .cancelled:
-            isConnected = false
+            self.socketState = .disconnected
         case .error(let error):
-            isConnected = false
+            self.socketState = .disconnected
             handleError(error)
         default:
             break
@@ -139,6 +146,11 @@ public class BlockSocket: ObservableObject, WebSocketDelegate {
 public enum BlockSocketSource {
     case blockchain_com
     //case mempool_space // Ignore for now, does not provide latest block, only next one
+}
+
+public enum SocketState {
+    case connected
+    case disconnected
 }
 
 public struct SocketBlock: Codable {
