@@ -60,7 +60,6 @@ struct WalletView: View {
     var body: some View {
         VStack (spacing: 50){
             Text("Hello, wallet!")
-                .padding()
             switch blockSocket.socketState {
             case .connected:
                 Text("Latest block: \(blockSocket.latestBlock?.height ?? 0)")
