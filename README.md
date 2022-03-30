@@ -85,6 +85,7 @@ disconnect()
 
 BDK Manager has the following `@Published` public variables, meaning they can be observed and lead to updates in SwiftUI:
 ```swift
-.latestBlock: SocketBlock? // .height: Int, .hash: String
+.latestBlockHeight: UInt32?
+.latestBlockHash: String?
 .socketState: SocketState // .connected, .disconnected
 ```
