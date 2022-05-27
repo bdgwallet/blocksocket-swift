@@ -10,7 +10,11 @@ import Starscream
 public class BlockSocket: ObservableObject, WebSocketDelegate {
     // Public variables
     @Published public var latestBlockHeight: UInt32?
-    @Published public var latestBlockHash: String?
+    @Published public var latestBlockHash: String? {
+        didSet {
+            print("BlockHash: " + latestBlockHash!)
+        }
+    }
     @Published public var socketState = SocketState.disconnected {
         didSet {
             switch socketState {
